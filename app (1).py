@@ -8,8 +8,38 @@ import plotly.graph_objects as go
 st.set_page_config(page_title="Touch & Turn Scalping (Shared Capital)", layout="wide")
 st.title("💰 Touch & Turn Scalping – Shared $5,000 Capital, Max $750 per trade")
 
-# ... (same sidebar inputs, same DEFAULT_TICKERS list) ...
+# ------------------------------------------------------------
+# Sidebar – User inputs (THIS DEFINES run_btn)
+# ------------------------------------------------------------
+st.sidebar.header("📊 Parameters")
 
+# Your 50 US stocks
+DEFAULT_TICKERS = [
+    "NVDA", "AMD", "AVGO", "QCOM", "AMAT", "ASML", "MU", "KLAC", "SMCI", "ARM",
+    "MSTR", "PANW", "TSM", "LRCX", "ON", "MPWR", "MRVL", "NXPI", "TEAM", "INTA",
+    "CRWD", "ZS", "ADBE", "WDAY", "SNPS", "NOW", "SHOP", "TXN", "CDNS", "MCHP",
+    "SWKS", "FTNT", "ANET", "UBER", "DASH", "TSLA", "ISRG", "VRTX", "LLY", "MRK",
+    "AAPL", "JNJ", "PEP", "LIN", "REGN", "INTC", "PG", "NKE", "ADSK", "MDT"
+]
+
+ticker_input = st.sidebar.text_area(
+    "Stock tickers (one per line)",
+    value="\n".join(DEFAULT_TICKERS)
+)
+tickers = [t.strip().upper() for t in ticker_input.split("\n") if t.strip()]
+
+start_date = st.sidebar.date_input("Start date", datetime(2024, 1, 1))
+end_date = st.sidebar.date_input("End date", datetime(2024, 12, 31))
+
+atr_period = st.sidebar.number_input("ATR period (days)", min_value=5, value=14)
+range_threshold = st.sidebar.slider("Min candle range (% of ATR)", 10, 100, 25) / 100.0
+
+# THIS IS THE BUTTON THAT CREATES run_btn
+run_btn = st.sidebar.button("🚀 Run Backtest", type="primary")
+
+# ------------------------------------------------------------
+# Helper functions
+# ------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def get_daily_data(ticker, start, end):
     df = yf.download(ticker, start=start, end=end, progress=False)
@@ -130,30 +160,33 @@ def extract_setups(ticker, daily_df, intraday_df, atr_period, range_threshold):
             })
     return setups
 
-# ------------------- Main -------------------
+# ------------------------------------------------------------
+# Main execution (only when button is clicked)
+# ------------------------------------------------------------
 if run_btn:
     if not tickers:
-        st.error("Enter tickers")
+        st.error("Please enter at least one ticker.")
         st.stop()
     
     progress_bar = st.progress(0)
-    status = st.empty()
+    status_text = st.empty()
     
     all_setups = []
+    total_stocks = len(tickers)
     for i, ticker in enumerate(tickers):
-        status.text(f"Fetching {ticker}...")
+        status_text.text(f"Fetching {ticker} ({i+1}/{total_stocks})...")
         daily = get_daily_data(ticker, start_date, end_date)
         intra = get_15min_data(ticker, start_date, end_date)
         setups = extract_setups(ticker, daily, intra, atr_period, range_threshold)
         all_setups.extend(setups)
-        progress_bar.progress((i+1)/len(tickers))
+        progress_bar.progress((i+1)/total_stocks)
     
-    status.text("Simulating sequential trades with shared capital...")
+    status_text.text("Simulating sequential trades with shared capital...")
     
-    # Sort setups by entry time
+    # Sort all setups by entry time
     all_setups.sort(key=lambda x: x["Time"])
     
-    # Simulate with $5000 capital, $750 max per trade
+    # Simulate with $5,000 capital, max $750 per trade
     equity = 5000.0
     trades = []
     for setup in all_setups:
@@ -166,16 +199,18 @@ if run_btn:
         trades.append({
             "Time": setup["Time"],
             "Ticker": setup["Ticker"],
-            "EntryPrice": setup["EntryPrice"],
-            "ExitPrice": setup["ExitPrice"],
+            "EntryPrice": round(setup["EntryPrice"], 4),
+            "ExitPrice": round(setup["ExitPrice"], 4),
             "Shares": round(shares, 4),
-            "PnL_USD": pnl,
-            "Equity_After": equity,
+            "PnL_USD": round(pnl, 2),
+            "Equity_After": round(equity, 2),
             "ExitReason": setup["ExitReason"]
         })
     
+    status_text.empty()
+    
     if not trades:
-        st.warning("No trades executed.")
+        st.warning("No trades were generated. Try a larger date range or lower threshold.")
     else:
         trades_df = pd.DataFrame(trades)
         total_trades = len(trades_df)
@@ -183,19 +218,23 @@ if run_btn:
         losses = trades_df[trades_df["PnL_USD"] <= 0]
         win_rate = len(wins)/total_trades*100 if total_trades>0 else 0
         total_pnl = trades_df["PnL_USD"].sum()
+        final_equity = equity
         
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total Trades", total_trades)
         col2.metric("Win Rate", f"{win_rate:.1f}%")
         col3.metric("Total PnL (USD)", f"${total_pnl:,.2f}")
-        col4.metric("Final Equity", f"${equity:,.2f}")
+        col4.metric("Final Equity", f"${final_equity:,.2f}")
         
+        # Equity curve
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=trades_df["Time"], y=trades_df["Equity_After"],
-                                 mode="lines+markers", name="Equity"))
-        fig.update_layout(title="Equity Curve (USD)", xaxis_title="Trade Time")
-        st.plotly_chart(fig)
+                                 mode="lines+markers", name="Portfolio Equity"))
+        fig.update_layout(title="Equity Curve (USD)", xaxis_title="Trade Date", yaxis_title="Equity ($)")
+        st.plotly_chart(fig, use_container_width=True)
         
+        st.subheader("📋 All Trades")
         st.dataframe(trades_df)
-        csv = trades_df.to_csv(index=False).encode()
-        st.download_button("Download CSV", csv, "trades.csv", "text/csv")
+        
+        csv = trades_df.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Download trades as CSV", csv, "touch_and_turn_backtest.csv", "text/csv")
