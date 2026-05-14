@@ -16,11 +16,7 @@ st.sidebar.header("📊 Parameters")
 
 # Your 50 US stocks
 DEFAULT_TICKERS = [
-    "NVDA", "AMD", "AVGO", "QCOM", "AMAT", "ASML", "MU", "KLAC", "SMCI", "ARM",
-    "MSTR", "PANW", "TSM", "LRCX", "ON", "MPWR", "MRVL", "NXPI", "TEAM", "INTA",
-    "CRWD", "ZS", "ADBE", "WDAY", "SNPS", "NOW", "SHOP", "TXN", "CDNS", "MCHP",
-    "SWKS", "FTNT", "ANET", "UBER", "DASH", "TSLA", "ISRG", "VRTX", "LLY", "MRK",
-    "AAPL", "JNJ", "PEP", "LIN", "REGN", "INTC", "PG", "NKE", "ADSK", "MDT"
+    "NVDA", "AMD", "AVGO", "QCOM" 
 ]
 
 ticker_input = st.sidebar.text_area(
